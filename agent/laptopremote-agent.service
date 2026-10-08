@@ -1,0 +1,18 @@
+[Unit]
+Description=LaptopRemote agent: shows this laptop in a window on the PC
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+WorkingDirectory=%h/laptopremote/agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -W ignore -m laptopremote_agent
+# whatever way the agent ends, killed included, the laptop gets its own screen back
+ExecStopPost=-/bin/sh %h/laptopremote/agent/laptopremote-restore
+# an agent that hangs is killed quickly, so the restore keybind is never kept waiting
+TimeoutStopSec=3
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

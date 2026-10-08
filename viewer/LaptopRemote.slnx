@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="LaptopRemote.Viewer.Core/LaptopRemote.Viewer.Core.csproj" />
+  <Project Path="LaptopRemote.Viewer.Tests/LaptopRemote.Viewer.Tests.csproj" />
+  <Project Path="LaptopRemote.Viewer/LaptopRemote.Viewer.csproj" />
+</Solution>

@@ -1,0 +1,7 @@
+__pycache__/
+bin/
+obj/
+.vs/
+*.user
+publish/
+agent/laptopremote_agent/wl/

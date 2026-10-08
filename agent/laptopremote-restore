@@ -1,0 +1,37 @@
+#!/bin/sh
+# Brings the laptop's own screen back and removes the headless output, without needing the agent.
+# Run by the systemd unit after every exit of the agent, and by the restore keybind.
+#   laptopremote-restore [--stop-agent]
+# --stop-agent also stops the agent, so a viewer that is still running cannot take the screen again.
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls -t "$runtime/hypr" 2>/dev/null | head -n 1)
+    export HYPRLAND_INSTANCE_SIGNATURE
+fi
+# the name goes into Lua that Hyprland runs, so only a plain connector name is taken from the config
+panel=$(tr -d '\r' < "$HOME/.config/laptopremote/config.toml" 2>/dev/null |
+    sed -n "s/^panel[ \t]*=[ \t]*[\"']\([A-Za-z0-9._-]*\)[\"'].*$/\1/p" | head -n 1)
+panel="${panel:-eDP-1}"
+
+restore() {
+    monitors=$(hyprctl monitors all -j 2>/dev/null) || return 0
+    # enable unless the panel is known to be on: when in doubt the laptop gets its screen
+    if ! printf '%s' "$monitors" | jq -e --arg panel "$panel" '.[] | select(.name == $panel and (.disabled | not))' >/dev/null 2>&1; then
+        hyprctl eval "hl.monitor({output=\"$panel\", disabled=false})" >/dev/null
+    fi
+    showing=$(printf '%s' "$monitors" | jq -r '.[] | select(.name == "LAPTOPREMOTE") | .activeWorkspace.id' 2>/dev/null)
+    if [ -n "$showing" ]; then
+        hyprctl output remove LAPTOPREMOTE >/dev/null
+        # the re-enabled panel shows a new empty workspace; go back to the one the viewer was showing
+        if [ "$showing" -gt 0 ] 2>/dev/null; then
+            hyprctl dispatch "hl.dsp.focus({workspace=\"$showing\"})" >/dev/null
+        fi
+    fi
+}
+
+if [ "$1" = "--stop-agent" ]; then
+    restore  # the screen first: an agent that hangs takes a few seconds to stop
+    systemctl --user stop laptopremote-agent.service
+fi
+restore
+exit 0

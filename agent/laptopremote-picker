@@ -1,0 +1,12 @@
+#!/bin/sh
+# Share picker for xdg-desktop-portal-hyprland (xdph.conf: screencopy.custom_picker_binary).
+# When the agent has dropped its flag file the headless output is picked without asking;
+# every other screen share request goes to the normal picker.
+flag="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/laptopremote-pick"
+if [ -f "$flag" ]; then
+    output=$(cat "$flag")
+    rm -f "$flag"
+    echo "[SELECTION]r/screen:$output"
+else
+    exec hyprland-preview-share-picker "$@"
+fi
