@@ -1,4 +1,5 @@
 """One viewing session: headless output in place of the laptop panel, capture and sender pipeline."""
+import time
 import traceback
 
 from gi.repository import GLib
@@ -14,10 +15,13 @@ class Session:
 
     def __init__(self, config, hypr=real_hypr, capture_factory=PortalCapture,
                  pipeline_factory=SenderPipeline, settle_ms=300, max_restarts=3, restart_ms=500, healthy_ms=10000,
-                 wake_ms=30000, input_factory=None, clipboard_factory=None):
+                 wake_ms=30000, stall_ms=2000, stall_check_ms=500, input_factory=None, clipboard_factory=None):
         self.config, self.hypr = config, hypr
         self.capture_factory, self.pipeline_factory, self.settle_ms = capture_factory, pipeline_factory, settle_ms
         self.max_restarts, self.restart_ms, self.healthy_ms = max_restarts, restart_ms, healthy_ms
+        # a stream that delivers no frame for stall_ms is dead: with keepalive-time set, a healthy one repeats
+        # the last frame several times a second even on a still screen
+        self.stall_ms, self.stall_check_ms = stall_ms, stall_check_ms
         self.wake_ms, self.wake_timer = wake_ms, None
         self.active = self.paused = False
         self.restarts = 0
@@ -248,6 +252,21 @@ class Session:
             self._fail(generation, f"video pipeline: {error}")
             return
         GLib.timeout_add(self.healthy_ms, self._on_healthy, generation)
+        self.stall_frames, self.stall_since = self.pipeline.frames, time.monotonic()
+        GLib.timeout_add(self.stall_check_ms, self._on_stall_check, generation)
+
+    def _on_stall_check(self, generation):
+        """A brief hold-up of the capture makes the portal run out of buffers, and its own retry never
+        recovers; a new capture does, so the stream is restarted like a failed one."""
+        if generation != self.generation or not self.active or self.paused or self.pipeline is None:
+            return False
+        frames, now = self.pipeline.frames, time.monotonic()
+        if frames != self.stall_frames:
+            self.stall_frames, self.stall_since = frames, now
+        elif now - self.stall_since >= self.stall_ms / 1000:
+            self._fail(generation, f"video stalled: no frame for {self.stall_ms} ms")
+            return False
+        return True
 
     def _on_healthy(self, generation):
         if generation == self.generation:

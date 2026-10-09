@@ -23,12 +23,13 @@ def launch_text(fd, node, host, port, bind_port, encoder):
 class SenderPipeline:
     def __init__(self, fd, node, host, port, bind_port, encoder, on_error):
         self.on_error = on_error
-        self.keyframes = 0
+        self.keyframes = self.frames = 0  # frames: buffers that left the capture, read by the session's stall check
         self.pipeline = Gst.parse_launch(launch_text(fd, node, host, port, bind_port, encoder))
         # pipewiresrc only reports itself live after caps are set, too late for the VA encoder,
         # which then holds frames back. Answer the encoder's latency query here instead.
-        self.pipeline.get_by_name("live").get_static_pad("src").add_probe(
-            Gst.PadProbeType.QUERY_UPSTREAM, self._on_query)
+        live = self.pipeline.get_by_name("live").get_static_pad("src")
+        live.add_probe(Gst.PadProbeType.QUERY_UPSTREAM, self._on_query)
+        live.add_probe(Gst.PadProbeType.BUFFER, self._on_buffer)
         self.encoder = self.pipeline.get_by_name("enc")
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
@@ -45,6 +46,10 @@ class SenderPipeline:
         self.keyframes += 1
         event = GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, self.keyframes)
         self.encoder.get_static_pad("src").send_event(event)
+
+    def _on_buffer(self, pad, info):
+        self.frames += 1
+        return Gst.PadProbeReturn.OK
 
     @staticmethod
     def _on_query(pad, info):

@@ -171,6 +171,54 @@ class StreamTests(unittest.TestCase):
             time.sleep(0.005)
         return self.hypr.calls.count(("wake",))
 
+    def watched(self, stall_ms=30):
+        """A session whose stall watchdog fires quickly; returns the first stream's pipeline."""
+        self.session = Session(Config(["192.0.2.10"]), hypr=self.hypr, capture_factory=FakeCapture,
+                               pipeline_factory=FakePipeline, settle_ms=0, restart_ms=0,
+                               stall_ms=stall_ms, stall_check_ms=5)
+        self.session.start(1600, 900, 1, "192.0.2.10", 47801, on_error=self.errors.append)
+        return self.stream()
+
+    def run_for(self, seconds, each=None):
+        import time
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if each is not None:
+                each()
+            pump()
+            time.sleep(0.005)
+
+    def test_stream_that_delivers_no_frame_is_restarted(self):
+        # a short hiccup makes the portal run out of buffers and its retry never recovers; a new capture does
+        first = self.watched()
+        self.run_for(0.2)
+        self.assertTrue(first.stopped)
+        self.assertGreaterEqual(len(FakeCapture.made), 2)
+        self.assertEqual(self.errors, [])
+
+    def test_stream_that_delivers_frames_is_left_alone(self):
+        pipeline = self.watched()
+
+        def frame():
+            pipeline.frames += 1
+
+        self.run_for(0.2, frame)
+        self.assertFalse(pipeline.stopped)
+        self.assertEqual(len(FakeCapture.made), 1)
+
+    def test_stall_watchdog_stops_with_the_stream(self):
+        pipeline = self.watched()
+        self.session.pause()
+        self.run_for(0.2)
+        self.assertEqual(len(FakeCapture.made), 1)
+        self.session.resume()
+        second = self.stream()
+        self.session.stop()
+        self.run_for(0.2)
+        self.assertEqual(len(FakeCapture.made), 2)
+        self.assertEqual(self.errors, [])
+        self.assertTrue(second.stopped)
+
     def test_displays_are_kept_awake_while_the_viewer_is_watching(self):
         # nothing reaches the laptop as input, so its idle timer would put the output to sleep: a black picture
         self.session = Session(Config(["192.0.2.10"]), hypr=self.hypr, capture_factory=FakeCapture,

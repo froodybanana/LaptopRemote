@@ -67,7 +67,7 @@ class FakePipeline:
     def __init__(self, fd, node, host, port, bind_port, encoder, on_error):
         self.args, self.on_error = (fd, node, host, port, bind_port, encoder), on_error
         self.started = self.stopped = False
-        self.keyframes = 0
+        self.keyframes = self.frames = 0
         FakePipeline.made.append(self)
 
     def start(self):

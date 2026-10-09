@@ -194,6 +194,7 @@ WireGuard is configured by one text file per machine: an `[Interface]` block wit
 - Heartbeats run every second; after 5 seconds of silence the agent ends the session and restores the laptop panel
 - The systemd unit runs a restore script on any exit, so the panel comes back even if the Python process dies
 - On an encoder or pipeline error the agent restarts the pipeline a few times, then reports the error and the viewer shows it in the window
+- A stream that delivers no frame for 2 seconds is restarted the same way: a brief hold-up of the agent leaves the portal without free buffers, and its own retry never recovers, while a new capture does. With the keepalive a healthy stream repeats its last frame several times a second, so 2 seconds of silence is certain
 - A new connection from the PC replaces the old one
 - Window sizes are clamped to a minimum and rounded to even dimensions
 
